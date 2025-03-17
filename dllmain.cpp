@@ -167,6 +167,39 @@ error:
     return supported;
 }
 
+bool is_supported_api(reshade::api::device* device = nullptr)
+{
+    reshade::api::device_api device_type;
+
+    if (device)
+    {
+        device_type = device->get_api();
+    }
+    else if (g_device)
+    {
+        device_type = g_device->get_api();
+    }
+
+    if (device || g_device)
+    {
+        if ((device_type == reshade::api::device_api::d3d11)
+         || (device_type == reshade::api::device_api::d3d12))
+        {
+            return true;
+        }
+        else
+        {
+            reshade::log_message(reshade::log_level::error, "Unsupported API!");
+        }
+    }
+    else
+    {
+        reshade::log_message(reshade::log_level::warning, "No device available!");
+    }
+
+    return false;
+}
+
 void set_reshade_colour_space()
 {
     if (g_runtime != nullptr)
@@ -257,13 +290,19 @@ static void on_init_device(reshade::api::device* device)
 
     g_device = device;
 
-    reshade::get_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
-    reshade::get_config_value(g_runtime, "HDR", "UseHDR10",  g_use_hdr10);
+    if (is_supported_api(device))
+    {
+        reshade::get_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
+        reshade::get_config_value(g_runtime, "HDR", "UseHDR10",  g_use_hdr10);
+    }
 }
 
 static void on_destroy_device(reshade::api::device* device)
 {
-    g_device = nullptr;
+    if (is_supported_api(device))
+    {
+        g_device = nullptr;
+    }
 }
 
 //static void init_swapchain(reshade::api::swapchain* swapchain)
@@ -273,30 +312,25 @@ static void on_destroy_device(reshade::api::device* device)
 
 static bool on_create_swapchain(reshade::api::swapchain_desc& swapchain_desc, void* hwnd)
 {
-    swapchain_desc.back_buffer.texture.format = reshade::api::format::r16g16b16a16_float;
-
-    if (g_use_hdr10)
+    if (is_supported_api())
     {
-        swapchain_desc.back_buffer.texture.format = reshade::api::format::r10g10b10a2_unorm;
-    }
+        swapchain_desc.back_buffer.texture.format = reshade::api::format::r16g16b16a16_float;
 
-    //swapchain_desc.refresh_rate.numerator = 60;
-    //swapchain_desc.refresh_rate.denominator = 1;
-
-    if (swapchain_desc.back_buffer_count < 2)
-    {
-        swapchain_desc.back_buffer_count = 2;
-    }
-
-    if (g_device)
-    {
-        const reshade::api::device_api device_type = g_device->get_api();
-
-        if ((device_type == reshade::api::device_api::d3d11) || (device_type == reshade::api::device_api::d3d12))
+        if (g_use_hdr10)
         {
-            swapchain_desc.present_mode   = static_cast<uint32_t>(DXGI_SWAP_EFFECT_FLIP_DISCARD);
-            swapchain_desc.present_flags |= static_cast<uint32_t>(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+            swapchain_desc.back_buffer.texture.format = reshade::api::format::r10g10b10a2_unorm;
         }
+
+        //swapchain_desc.refresh_rate.numerator = 60;
+        //swapchain_desc.refresh_rate.denominator = 1;
+
+        if (swapchain_desc.back_buffer_count < 2)
+        {
+            swapchain_desc.back_buffer_count = 2;
+        }
+
+        swapchain_desc.present_mode   = static_cast<uint32_t>(DXGI_SWAP_EFFECT_FLIP_DISCARD);
+        swapchain_desc.present_flags |= static_cast<uint32_t>(DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
     }
 
     return true;
@@ -304,22 +338,19 @@ static bool on_create_swapchain(reshade::api::swapchain_desc& swapchain_desc, vo
 
 static void on_init_swapchain(reshade::api::swapchain* swapchain)
 {
-    const std::lock_guard<std::mutex> lock(g_mutex);
-
-    reshade::api::device* const device = swapchain->get_device();
-
-    for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
+    if (is_supported_api())
     {
-        const reshade::api::resource buffer = swapchain->get_back_buffer(i);
+        const std::lock_guard<std::mutex> lock(g_mutex);
 
-        g_back_buffers.emplace(buffer.handle);
-    }
+        reshade::api::device* const device = swapchain->get_device();
 
-    const reshade::api::device_api device_type = device->get_api();
+        for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
+        {
+            const reshade::api::resource buffer = swapchain->get_back_buffer(i);
 
-    if (device_type == reshade::api::device_api::d3d11
-     || device_type == reshade::api::device_api::d3d12)
-    {
+            g_back_buffers.emplace(buffer.handle);
+        }
+
         IDXGISwapChain* native_swapchain = reinterpret_cast<IDXGISwapChain*>(swapchain->get_native());
         ATL::CComPtr<IDXGISwapChain4> swapchain4;
 
@@ -491,87 +522,107 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
 
 static void on_destroy_swapchain(reshade::api::swapchain* swapchain)
 {
-    const std::lock_guard<std::mutex> lock(g_mutex);
-
-    reshade::api::device* const device = swapchain->get_device();
-
-    for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
+    if (is_supported_api())
     {
-        const reshade::api::resource buffer = swapchain->get_back_buffer(i);
+        const std::lock_guard<std::mutex> lock(g_mutex);
 
-        g_back_buffers.erase(buffer.handle);
+        reshade::api::device* const device = swapchain->get_device();
+
+        for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
+        {
+            const reshade::api::resource buffer = swapchain->get_back_buffer(i);
+
+            g_back_buffers.erase(buffer.handle);
+        }
     }
 }
 
 static bool on_create_resource_view(reshade::api::device* device, reshade::api::resource resource, reshade::api::resource_usage usage_type, reshade::api::resource_view_desc& desc)
 {
-    if ((desc.format != reshade::api::format::unknown) && device)
+    if (is_supported_api(device))
     {
-        bool is_back_buffer = false;
-
-        for (uint64_t back_buffer : g_back_buffers)
+        if ((desc.format != reshade::api::format::unknown) && device)
         {
-            if (resource == back_buffer)
-            {
-                is_back_buffer = true;
-            }
-        }
+            bool is_back_buffer = false;
 
-        if (is_back_buffer)
-        {
-            const reshade::api::resource_desc texture_desc = device->get_resource_desc(resource);
-
-            if (texture_desc.texture.format == reshade::api::format::r10g10b10a2_unorm)
+            for (uint64_t back_buffer : g_back_buffers)
             {
-                desc.format = reshade::api::format::r10g10b10a2_unorm;
-                return true;
+                if (resource == back_buffer)
+                {
+                    is_back_buffer = true;
+                }
             }
 
-            if (texture_desc.texture.format == reshade::api::format::r16g16b16a16_float)
+            if (is_back_buffer)
             {
-                desc.format = reshade::api::format::r16g16b16a16_float;
-                return true;
+                const reshade::api::resource_desc texture_desc = device->get_resource_desc(resource);
+
+                if (texture_desc.texture.format == reshade::api::format::r10g10b10a2_unorm)
+                {
+                    desc.format = reshade::api::format::r10g10b10a2_unorm;
+                    return true;
+                }
+
+                if (texture_desc.texture.format == reshade::api::format::r16g16b16a16_float)
+                {
+                    desc.format = reshade::api::format::r16g16b16a16_float;
+                    return true;
+                }
             }
         }
     }
+
     return false;
 }
 
 static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
 {
-    if (g_hdr_support)
+    if (is_supported_api())
     {
-        bool hdr_enable_modified    = false;
-        bool hdr_use_hdr10_modified = false;
-
-        hdr_enable_modified    |= ImGui::Checkbox("Enable HDR", &g_hdr_enable);
-        hdr_use_hdr10_modified |= ImGui::Checkbox("Use HDR10 instead of scRGB (needs game restart or chaning the resolution of the game)", &g_use_hdr10);
-
-        if (hdr_enable_modified)
+        if (g_hdr_support)
         {
-            reshade::set_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
+            bool hdr_enable_modified    = false;
+            bool hdr_use_hdr10_modified = false;
+
+            hdr_enable_modified    |= ImGui::Checkbox("Enable HDR", &g_hdr_enable);
+            hdr_use_hdr10_modified |= ImGui::Checkbox("Use HDR10 instead of scRGB (needs game restart or chaning the resolution of the game)", &g_use_hdr10);
+
+            if (hdr_enable_modified)
+            {
+                reshade::set_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
+            }
+            if (hdr_use_hdr10_modified)
+            {
+                reshade::set_config_value(g_runtime, "HDR", "UseHDR10", g_use_hdr10);
+            }
         }
-        if (hdr_use_hdr10_modified)
+        else
         {
-            reshade::set_config_value(g_runtime, "HDR", "UseHDR10", g_use_hdr10);
+            ImGui::TextUnformatted("HDR support is not enabled. If hardware can support it please go to Windows 'Display Settings' and then turn on 'Use HDR'");
         }
     }
     else
     {
-        ImGui::TextUnformatted("HDR support is not enabled. If hardware can support it please go to Windows 'Display Settings' and then turn on 'Use HDR'");
+        ImGui::TextUnformatted("Unsupported API!");
     }
 }
 
 static void on_init_effect_runtime(reshade::api::effect_runtime* runtime)
 {
-    g_runtime = runtime;
+    if (is_supported_api())
+    {
+        g_runtime = runtime;
 
-    set_reshade_colour_space();
+        set_reshade_colour_space();
+    }
 }
 
 static void on_destroy_effect_runtime(reshade::api::effect_runtime* runtime)
 {
-    g_runtime = nullptr;
+    if (is_supported_api())
+    {
+        g_runtime = nullptr;
+    }
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
