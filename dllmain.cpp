@@ -59,14 +59,14 @@ bool dxgi_check_display_hdr_support(IDXGIFactory1* factory, HWND hwnd)
     {
         if (FAILED(CreateDXGIFactory2(0, __uuidof(IDXGIFactory2), (void**)&factory)))
         {
-            reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to create DXGI factory");
+            reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to create DXGI factory");
             return false;
         }
     }
 
     if (FAILED(factory->EnumAdapters(0, &dxgi_adapter)))
     {
-        reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to enumerate adapters");
+        reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to enumerate adapters");
         return false;
     }
 #else
@@ -74,14 +74,14 @@ bool dxgi_check_display_hdr_support(IDXGIFactory1* factory, HWND hwnd)
     {
         if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&factory)))
         {
-            reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to create DXGI factory");
+            reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to create DXGI factory");
             return false;
         }
     }
 
     if (FAILED(factory->EnumAdapters(0, &dxgi_adapter)))
     {
-        reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to enumerate adapters");
+        reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to enumerate adapters");
         return false;
     }
 #endif
@@ -109,7 +109,7 @@ bool dxgi_check_display_hdr_support(IDXGIFactory1* factory, HWND hwnd)
         /* Get the rectangle bounds of current output */
         if (FAILED(current_output->GetDesc(&desc)))
         {
-            reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get DXGI output description");
+            reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get DXGI output description");
             goto error;
         }
 
@@ -143,20 +143,20 @@ bool dxgi_check_display_hdr_support(IDXGIFactory1* factory, HWND hwnd)
 
             if (supported)
             {
-                reshade::log_message(reshade::log_level::info, "[DXGI]: DXGI Output supports: DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020");
+                reshade::log::message(reshade::log::level::info, "[DXGI]: DXGI Output supports: DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020");
             }
 
             g_hdr_support = supported;
         }
         else
         {
-            reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get DXGI Output 6 description");
+            reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get DXGI Output 6 description");
         }
         output6->Release();
     }
     else
     {
-        reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get DXGI Output 6 from best output");
+        reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get DXGI Output 6 from best output");
     }
 
 error:
@@ -189,12 +189,12 @@ bool is_supported_api(reshade::api::device* device = nullptr)
         }
         else
         {
-            reshade::log_message(reshade::log_level::error, "Unsupported API!");
+            reshade::log::message(reshade::log::level::error, "Unsupported API!");
         }
     }
     else
     {
-        reshade::log_message(reshade::log_level::warning, "No device available!");
+        reshade::log::message(reshade::log::level::warning, "No device available!");
     }
 
     return false;
@@ -231,7 +231,7 @@ void set_reshade_colour_space()
                 << EnumerateDxgiColourSpace(g_colour_space).c_str()
                 << " set";
 
-        reshade::log_message(reshade::log_level::info, log_str.str().c_str());
+        reshade::log::message(reshade::log::level::info, log_str.str().c_str());
 
         g_runtime->set_color_space(reshade_colour_space);
     }
@@ -246,7 +246,7 @@ void dxgi_swapchain_color_space(
     if (FAILED(swapchain->CheckColorSpaceSupport(target_colour_space, &color_space_support)))
     {
 
-        reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to check DXGI swapchain colour space support");
+        reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to check DXGI swapchain colour space support");
         return;
     }
 
@@ -254,7 +254,7 @@ void dxgi_swapchain_color_space(
     {
         if (FAILED(swapchain->SetColorSpace1(target_colour_space)))
         {
-            reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to set DXGI swapchain colour space");
+            reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to set DXGI swapchain colour space");
             return;
         }
 
@@ -264,7 +264,7 @@ void dxgi_swapchain_color_space(
                 << EnumerateDxgiColourSpace(target_colour_space).c_str()
                 << " set";
 
-        reshade::log_message(reshade::log_level::info, log_str.str().c_str());
+        reshade::log::message(reshade::log::level::info, log_str.str().c_str());
 
         g_colour_space = target_colour_space;
 
@@ -280,7 +280,7 @@ void dxgi_swapchain_color_space(
                 << color_space_support
                 << ") not supported";
 
-        reshade::log_message(reshade::log_level::error, log_str.str().c_str());
+        reshade::log::message(reshade::log::level::error, log_str.str().c_str());
     }
 }
 
@@ -310,7 +310,7 @@ static void on_destroy_device(reshade::api::device* device)
 //    static int t = 0; ++t;
 //}
 
-static bool on_create_swapchain(reshade::api::swapchain_desc& swapchain_desc, void* hwnd)
+static bool on_create_swapchain(reshade::api::device_api api, reshade::api::swapchain_desc& swapchain_desc, void* hwnd)
 {
     if (is_supported_api())
     {
@@ -336,7 +336,7 @@ static bool on_create_swapchain(reshade::api::swapchain_desc& swapchain_desc, vo
     return true;
 }
 
-static void on_init_swapchain(reshade::api::swapchain* swapchain)
+static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
 {
     if (is_supported_api())
     {
@@ -362,7 +362,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                 IDXGIFactory2* factory = nullptr;
                 if (FAILED(swapchain4->GetParent(__uuidof(IDXGIFactory2), (void**)&factory)))
                 {
-                    reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get the swap chain's factory 2");
+                    reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get the swap chain's factory 2");
                     return;
                 }
 
@@ -371,7 +371,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                 IDXGIFactory1* factory = nullptr;
                 if (FAILED(swapchain4->GetParent(__uuidof(IDXGIFactory1), (void**)&factory)))
                 {
-                    reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get the swap chain's factory 1");
+                    reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get the swap chain's factory 1");
                     return;
                 }
 
@@ -383,7 +383,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
 
             if (g_hdr_support == false)
             {
-                reshade::log_message(reshade::log_level::error, "[DXGI]: Failed as no HDR support");
+                reshade::log::message(reshade::log::level::error, "[DXGI]: Failed as no HDR support");
                 return;
             }
 
@@ -392,7 +392,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                 DXGI_SWAP_CHAIN_DESC1 desc;
                 if (FAILED(swapchain4->GetDesc1(&desc)))
                 {
-                    reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get swap chain description");
+                    reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get swap chain description");
                     return;
                 }
 
@@ -429,7 +429,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                                 << EnumerateDxgiFormat(new_swapchain_format).c_str()
                                 << ": error DXGI_ERROR_INVALID_CALL";
 
-                        reshade::log_message(reshade::log_level::error, log_str.str().c_str());
+                        reshade::log::message(reshade::log::level::error, log_str.str().c_str());
                     }
                     else if (FAILED(hr))
                     {
@@ -441,7 +441,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                                 << std::hex
                                 << hr;
 
-                        reshade::log_message(reshade::log_level::error, log_str.str().c_str());
+                        reshade::log::message(reshade::log::level::error, log_str.str().c_str());
                         return;
                     }
 
@@ -450,7 +450,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                     log_str << "[DXGI]: swap chain format updated to "
                             << EnumerateDxgiFormat(new_swapchain_format).c_str();
 
-                    reshade::log_message(reshade::log_level::info, log_str.str().c_str());
+                    reshade::log::message(reshade::log::level::info, log_str.str().c_str());
                 }
 
                 dxgi_swapchain_color_space(swapchain4, new_colour_space);
@@ -460,7 +460,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                 DXGI_SWAP_CHAIN_DESC1 desc;
                 if (FAILED(swapchain4->GetDesc1(&desc)))
                 {
-                    reshade::log_message(reshade::log_level::error, "[DXGI]: Failed to get swap chain description");
+                    reshade::log::message(reshade::log::level::error, "[DXGI]: Failed to get swap chain description");
                     return;
                 }
 
@@ -491,7 +491,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                                 << EnumerateDxgiFormat(new_swapchain_format).c_str()
                                 << ": error DXGI_ERROR_INVALID_CALL";
 
-                        reshade::log_message(reshade::log_level::error, log_str.str().c_str());
+                        reshade::log::message(reshade::log::level::error, log_str.str().c_str());
                     }
                     else if (FAILED(hr))
                     {
@@ -503,7 +503,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                                 << std::hex
                                 << hr;
 
-                        reshade::log_message(reshade::log_level::error, log_str.str().c_str());
+                        reshade::log::message(reshade::log::level::error, log_str.str().c_str());
                     }
 
                     std::stringstream log_str;
@@ -511,7 +511,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
                     log_str << "[DXGI]: swap chain format updated to "
                             << EnumerateDxgiFormat(new_swapchain_format).c_str();
 
-                    reshade::log_message(reshade::log_level::info, log_str.str().c_str());
+                    reshade::log::message(reshade::log::level::info, log_str.str().c_str());
                 }
 
                 dxgi_swapchain_color_space(swapchain4, new_colour_space);
@@ -520,7 +520,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain)
     }
 }
 
-static void on_destroy_swapchain(reshade::api::swapchain* swapchain)
+static void on_destroy_swapchain(reshade::api::swapchain* swapchain, bool resize)
 {
     if (is_supported_api())
     {
@@ -634,8 +634,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         // This will look for the ReShade instance in the current process and initialize the API when found.
         if (!reshade::register_addon(hinstDLL))
             return FALSE;
-        reshade::log_message(reshade::log_level::info, "DLL attached");
-        reshade::log_message(reshade::log_level::info, "ReShade addon registered");
+        reshade::log::message(reshade::log::level::info, "DLL attached");
+        reshade::log::message(reshade::log::level::info, "ReShade addon registered");
 
         reshade::register_overlay(nullptr, draw_settings_overlay);
         reshade::register_event<reshade::addon_event::create_swapchain>(&on_create_swapchain);
