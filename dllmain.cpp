@@ -27,6 +27,7 @@ bool                          g_hdr_support      = false;
 bool                          g_first_csp_change = true;
 DXGI_COLOR_SPACE_TYPE         g_colour_space     = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 DXGI_FORMAT                   g_original_format  = DXGI_FORMAT_R10G10B10A2_UNORM;
+bool                          g_is_supported_api = false;
 
 reshade::api::device*         g_device           = nullptr;
 reshade::api::effect_runtime* g_runtime          = nullptr;
@@ -167,39 +168,6 @@ error:
     return supported;
 }
 
-bool is_supported_api(reshade::api::device* device = nullptr)
-{
-    reshade::api::device_api device_type;
-
-    if (device)
-    {
-        device_type = device->get_api();
-    }
-    else if (g_device)
-    {
-        device_type = g_device->get_api();
-    }
-
-    if (device || g_device)
-    {
-        if ((device_type == reshade::api::device_api::d3d11)
-         || (device_type == reshade::api::device_api::d3d12))
-        {
-            return true;
-        }
-        else
-        {
-            reshade::log::message(reshade::log::level::error, "Unsupported API!");
-        }
-    }
-    else
-    {
-        reshade::log::message(reshade::log::level::warning, "No device available!");
-    }
-
-    return false;
-}
-
 void set_reshade_colour_space()
 {
     if (g_runtime != nullptr)
@@ -290,7 +258,19 @@ static void on_init_device(reshade::api::device* device)
 
     g_device = device;
 
-    if (is_supported_api(device))
+    const reshade::api::device_api device_type = device->get_api();
+
+    if (device_type == reshade::api::device_api::d3d11
+     || device_type == reshade::api::device_api::d3d12)
+    {
+        g_is_supported_api = true;
+    }
+    else
+    {
+        g_is_supported_api = false;
+    }
+
+    if (g_is_supported_api)
     {
         reshade::get_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
         reshade::get_config_value(g_runtime, "HDR", "UseHDR10",  g_use_hdr10);
@@ -299,10 +279,9 @@ static void on_init_device(reshade::api::device* device)
 
 static void on_destroy_device(reshade::api::device* device)
 {
-    if (is_supported_api(device))
-    {
-        g_device = nullptr;
-    }
+    g_device = nullptr;
+
+    g_is_supported_api = false;
 }
 
 //static void init_swapchain(reshade::api::swapchain* swapchain)
@@ -312,7 +291,7 @@ static void on_destroy_device(reshade::api::device* device)
 
 static bool on_create_swapchain(reshade::api::device_api api, reshade::api::swapchain_desc& swapchain_desc, void* hwnd)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         swapchain_desc.back_buffer.texture.format = reshade::api::format::r16g16b16a16_float;
 
@@ -338,7 +317,7 @@ static bool on_create_swapchain(reshade::api::device_api api, reshade::api::swap
 
 static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         const std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -522,7 +501,7 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
 
 static void on_destroy_swapchain(reshade::api::swapchain* swapchain, bool resize)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         const std::lock_guard<std::mutex> lock(g_mutex);
 
@@ -539,7 +518,7 @@ static void on_destroy_swapchain(reshade::api::swapchain* swapchain, bool resize
 
 static bool on_create_resource_view(reshade::api::device* device, reshade::api::resource resource, reshade::api::resource_usage usage_type, reshade::api::resource_view_desc& desc)
 {
-    if (is_supported_api(device))
+    if (g_is_supported_api)
     {
         if ((desc.format != reshade::api::format::unknown) && device)
         {
@@ -577,7 +556,7 @@ static bool on_create_resource_view(reshade::api::device* device, reshade::api::
 
 static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         if (g_hdr_support)
         {
@@ -609,7 +588,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
 
 static void on_init_effect_runtime(reshade::api::effect_runtime* runtime)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         g_runtime = runtime;
 
@@ -619,7 +598,7 @@ static void on_init_effect_runtime(reshade::api::effect_runtime* runtime)
 
 static void on_destroy_effect_runtime(reshade::api::effect_runtime* runtime)
 {
-    if (is_supported_api())
+    if (g_is_supported_api)
     {
         g_runtime = nullptr;
     }
