@@ -28,6 +28,7 @@ bool                          g_first_csp_change = true;
 DXGI_COLOR_SPACE_TYPE         g_colour_space     = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 DXGI_FORMAT                   g_original_format  = DXGI_FORMAT_R10G10B10A2_UNORM;
 bool                          g_is_supported_api = false;
+bool                          g_is_vulkan_api    = false;
 
 reshade::api::device*         g_device           = nullptr;
 reshade::api::effect_runtime* g_runtime          = nullptr;
@@ -261,13 +262,23 @@ static void on_init_device(reshade::api::device* device)
     const reshade::api::device_api device_type = device->get_api();
 
     if (device_type == reshade::api::device_api::d3d11
-     || device_type == reshade::api::device_api::d3d12)
+     || device_type == reshade::api::device_api::d3d12
+     || device_type == reshade::api::device_api::vulkan)
     {
         g_is_supported_api = true;
     }
     else
     {
         g_is_supported_api = false;
+    }
+
+    if (device_type == reshade::api::device_api::vulkan)
+    {
+        g_is_vulkan_api = true;
+    }
+    else
+    {
+        g_is_vulkan_api = false;
     }
 
     if (g_is_supported_api)
@@ -282,6 +293,7 @@ static void on_destroy_device(reshade::api::device* device)
     g_device = nullptr;
 
     g_is_supported_api = false;
+    g_is_vulkan_api    = false;
 }
 
 //static void init_swapchain(reshade::api::swapchain* swapchain)
@@ -560,6 +572,13 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
     {
         if (g_hdr_support)
         {
+            if (g_is_vulkan_api)
+            {
+                ImGui::TextColored(ImVec4(1.f, 0.3f, 0.3f, 1.f),
+                                   "Vulkan API supported is experimental!!"
+                              "\n" "Do not use this with dxvk! Use my dxvk HDR-mod instead!");
+            }
+
             bool hdr_enable_modified    = false;
             bool hdr_use_hdr10_modified = false;
 
