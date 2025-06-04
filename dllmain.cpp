@@ -261,7 +261,8 @@ static void on_init_device(reshade::api::device* device)
 
     const reshade::api::device_api device_type = device->get_api();
 
-    if (device_type == reshade::api::device_api::d3d11
+    if (device_type == reshade::api::device_api::d3d10
+     || device_type == reshade::api::device_api::d3d11
      || device_type == reshade::api::device_api::d3d12
      || device_type == reshade::api::device_api::vulkan)
     {
