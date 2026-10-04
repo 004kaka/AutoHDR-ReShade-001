@@ -35,24 +35,25 @@
  * [DISABLED / PRESERVED ORIGINAL CODE / 비활성화 및 원본 보존 구역]
  * ----------------------------------------------------------------------------
  * [English Description]:
- * - Original Code       : #include "debug.h"
- * - Reason for Disabling: "debug.h" is an external repository dependency. Disabling it
- *                         enables 100% standalone single-file building on GitHub Actions CI.
- * - Alternative Provided: Lightweight inline format/color space string helpers are
- *                         implemented directly below to provide human-readable logs.
- * - Revival Potential   : Preserved strictly if external debug headers are reintroduced.
+ * - Original Code       : #include <atlbase.h>
+ * - Reason for Disabling: <atlbase.h> belongs to the optional Microsoft ATL component,
+ *                         which is not installed for v142 on GitHub Actions runners,
+ *                         causing fatal error C1083. Replacing with standard Windows SDK
+ *                         <wrl/client.h> (Microsoft::WRL::ComPtr) guarantees standalone builds.
+ * - Revival Potential   : Preserved if a local environment with ATL v142 is used.
  * ----------------------------------------------------------------------------
  * [한국어 상세 설명 (정밀 대조 번역)]:
- * - 원본 코드: #include "debug.h"
- * - 비활성화 이유: "debug.h"는 외부 리포지토리 파일 의존성입니다. 단일 파일만으로 깃허브
- *                 액션(CI)에서 에러 없이 100% 독립 빌드되도록 비활성화합니다.
- * - 대체 구현: 외부 파일 없이도 로그에 사람이 읽을 수 있는 포맷 이름을 남기기 위해
- *             가벼운 자체 인라인 문자열 헬퍼 함수를 아래에 직접 구현했습니다.
- * - 복구 가능성: 추후 외부 디버그 헤더를 다시 연동할 경우를 위해 원본을 보존합니다.
+ * - 원본 코드: #include <atlbase.h>
+ * - 비활성화 이유: <atlbase.h>는 Visual Studio의 선택 설치 패키지인 ATL 라이브러리입니다.
+ *                 깃허브 액션 러너의 v142 툴셋에는 ATL이 설치되어 있지 않아 C1083 에러를 
+ *                 유발합니다. 표준 Windows SDK 기본 내장 헤더인 <wrl/client.h>로 대체하여 
+ *                 외부 의존성 없이 빌드 성공을 보증합니다.
+ * - 복구 가능성: 추후 v142 ATL이 설치된 로컬 환경에서 빌드할 경우를 위해 보존합니다.
  * ============================================================================ */
 /*
-#include "debug.h"
+#include <atlbase.h>
 */
+#include <wrl/client.h>
 
 //#define __WINRT__
 
@@ -626,13 +627,11 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
             return;
         }
 
-        ATL::CComPtr<IDXGISwapChain3> swapchain3;
-        if (SUCCEEDED(native_swapchain->QueryInterface(__uuidof(IDXGISwapChain3), (void**)&swapchain3)))
-        {
-            // Apply scRGB directly without crash-inducing display check loops
-            // 충돌을 유발하는 디스플레이 검사 루프 없이 scRGB를 직접 안전하게 적용
-            dxgi_swapchain_color_space(swapchain3, DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
-        }
+        Microsoft::WRL::ComPtr<IDXGISwapChain3> swapchain3;
+if (SUCCEEDED(native_swapchain->QueryInterface(IID_PPV_ARGS(&swapchain3))))
+{
+    dxgi_swapchain_color_space(swapchain3.Get(), DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+}
         else
         {
             LogToFile(L"[init_swapchain]: Failed to QueryInterface IDXGISwapChain3 (Graceful Fallback)\n");
