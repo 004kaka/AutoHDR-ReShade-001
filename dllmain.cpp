@@ -29,7 +29,7 @@
 #include <sstream>
 #include <unordered_set>
 #include <cassert>
-#include <atlbase.h>
+// #include <atlbase.h>
 
 /* ============================================================================
  * [DISABLED / PRESERVED ORIGINAL CODE / 비활성화 및 원본 보존 구역]
