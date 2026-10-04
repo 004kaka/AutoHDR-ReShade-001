@@ -1,0 +1,35 @@
+name: Build AutoHDR ReShade Addon
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Build Solution (Release x64)
+      run: |
+        msbuild /m /p:Configuration=Release /p:Platform=x64
+
+    - name: Upload Addon Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: AutoHDR-Release-x64
+        path: |
+          **/*.addon
+          **/*.addon64
+          bin/**/*.dll
+          x64/**/*.dll
