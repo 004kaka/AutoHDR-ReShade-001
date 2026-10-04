@@ -67,10 +67,20 @@ BEGIN
     BEGIN
         BLOCK "000004b0"
         BEGIN
+            // [원본 보존 구역: 원작자 작성 라인 100% 무수정 불변 유지]
             VALUE "CompanyName", "Lilium"
             VALUE "FileDescription", "ReShade AutoHDR"
             VALUE "FileVersion", "2024.4.17.0"
             VALUE "ProductVersion", "2024.4.17.0"
+
+            // [신규 추가 구역: 원본을 건드리지 않고 하단에 독립 라인으로 증설]
+            VALUE "OriginalAuthor", "Lilium"
+            VALUE "KAKA_Edition", "AutoHDR KAKA Edition - Shin Ryu Mod Manager Compatible FP16 scRGB Bridge (ReShade 6.8)"
+            VALUE "KAKA_BuildVersion", "2026.10.5.0"
+            VALUE "LegalCopyright", "Original (C) Lilium / Modifications (C) 2026 KAKA"
+            VALUE "InternalName", "AutoHDR"
+            VALUE "OriginalFilename", "AutoHDR.addon64"
+            VALUE "Comments", "Zero-crash 16-bit scRGB HDR bridge eliminating runtime ResizeBuffers for seamless compatibility with Shin Ryu Mod Manager (version.dll) and proxy DLL environments on ReShade 6.8."
         END
     END
     BLOCK "VarFileInfo"
@@ -93,4 +103,3 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
-
