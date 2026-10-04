@@ -22,7 +22,7 @@ jobs:
 
     - name: Build Project (Release x64)
       run: |
-        msbuild HDR11.vcxproj /m /p:Configuration=Release /p:Platform=x64
+        msbuild HDRDll.vcxproj /m /p:Configuration=Release /p:Platform=x64
 
     - name: Upload Addon Artifacts
       uses: actions/upload-artifact@v4
