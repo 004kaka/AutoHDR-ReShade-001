@@ -20,9 +20,9 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v2
 
-    - name: Build Solution (Release x64)
+    - name: Build Project (Release x64)
       run: |
-        msbuild /m /p:Configuration=Release /p:Platform=x64
+        msbuild AutoHDR.vcxproj /m /p:Configuration=Release /p:Platform=x64
 
     - name: Upload Addon Artifacts
       uses: actions/upload-artifact@v4
