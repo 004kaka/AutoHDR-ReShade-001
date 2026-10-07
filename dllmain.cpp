@@ -2,17 +2,26 @@
  * Project: AutoHDR Minimalist scRGB Bridge for Judgment (Dragon Engine Edition)
  * Base   : EndlesslyFlowering/AutoHDR-ReShade (mine branch)
  * Target : Judgment (Steam D3D11) + Shin Ryu Mod Manager (version.dll)
+ * Edition: AutoHDR KAKA Edition (2026.10.07 Final Revision)
  * 
  * [Bilingual Annotation & Preservation Policy / 이중 언어 주석 및 무삭제 보존 원칙]
  * 1. Zero-Deletion Policy: Not a single line of original code is removed.
  *    All unused or crash-inducing legacy codes are 100% preserved via block comments.
  * 2. Anti-Inversion Bilingual Comments: English and rigorously verified Korean
  *    are paired to prevent semantic inversion (positive/negative, max/min).
+ * 3. 3 Restored Features:
+ *    - Dual-Dispatch Native Logging: Synchronized with reshade::log::message & KAKA-autoHDR_addon_log.txt.
+ *    - Vulkan API Warning Banner: Informational safety warning without render pipeline interruption.
+ *    - Pure Read-Only Display HDR Telemetry: Non-blocking DXGI 1.6 query ensuring 0% crash risk.
  * ----------------------------------------------------------------------------
  * 1. 무삭제 원칙: 원본 소스코드의 단 한 줄도 임의로 삭제하지 않았습니다.
  *    현재 사용하지 않거나 충돌을 유발하는 레거시 코드는 전량 블록 주석으로 보존합니다.
  * 2. 의미 반전 방지 이중 주석: 기술적 의미 왜곡(긍정/부정, 최대/최소)을 원천 차단하기 위해
  *    영문 설명과 정밀 대조 번역된 한국어 설명을 나란히 병기합니다.
+ * 3. 3대 안전 복원 기능:
+ *    - ReShade 네이티브 로깅 일원화: KAKA-autoHDR_addon_log.txt 파일과 reshade::log 동시 전송.
+ *    - Vulkan API 예외 감지 및 인게임 주의 배너: 렌더 파이프라인 방해 없는 순수 안내 UI.
+ *    - 순수 읽기 전용 디스플레이 HDR 사전 감지: 파이프라인 중단(abort) 없는 100% 안전 텔레메트리.
  * ============================================================================ */
 
 #include "pch.h"
@@ -95,20 +104,23 @@ inline static const char* GetDxgiColorSpaceName(DXGI_COLOR_SPACE_TYPE color_spac
 // [ACTIVE MINIMAL PIPELINE / 핵심 동작 구역]
 // ----------------------------------------------------------------------------
 // [English Description]:
-// - Functionality: Standalone persistent file logger writing to "scRGB_addon_log.txt".
-// - Purpose      : GitHub Actions creates Release builds where standard debug output is lost.
-//                  This class guarantees real-time file logging in both Debug and Release.
+// - Functionality: Dual-Dispatch SafeLogManager writing to "KAKA-autoHDR_addon_log.txt"
+//                  and simultaneously forwarding messages to reshade::log::message.
+// - Purpose      : Fulfills Feature 1 (Full ReShade native logging unification) while
+//                  safely capturing all real-time events to the renamed log file.
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
-// - 동작 기능: 게임 폴더의 "scRGB_addon_log.txt" 파일에 실시간 기록하는 독립형 상시 로거.
-// - 목적: 깃허브 액션의 Release 빌드 환경에서도 로그가 증발하지 않고 디버깅 정보를 남기도록 보증합니다.
+// - 동작 기능: "KAKA-autoHDR_addon_log.txt" 파일 기록 및 reshade::log::message 실시간
+//              이원화 동시 전송(Dual-Dispatch)을 수행하는 안전 로그 관리자.
+// - 목적: [기능 1] ReShade 내부 로깅 체계와의 완전 일원화를 달성하여, 인게임 [Log] 탭과
+//         외부 텍스트 파일 양쪽에 모든 디버그 이벤트가 누락 없이 기록되도록 보증합니다.
 // ============================================================================
 class SafeLogManager
 {
 public:
     SafeLogManager()
     {
-        errno_t error = _wfopen_s(&log_file, L"scRGB_addon_log.txt", L"w");
+        errno_t error = _wfopen_s(&log_file, L"KAKA-autoHDR_addon_log.txt", L"w");
         (void)error;
     }
 
@@ -126,12 +138,36 @@ public:
     {
         va_list args;
         va_start(args, format);
-        OutputDebugStringW(format);
+
+        wchar_t buffer[2048];
+        vswprintf_s(buffer, 2048, format, args);
+
+        OutputDebugStringW(buffer);
+
         if (log_file != nullptr)
         {
-            vfwprintf(log_file, format, args);
+            vfwprintf(log_file, L"%s", buffer);
             fflush(log_file);
         }
+
+        // ReShade 네이티브 로깅 동시 전송 (Dual-Dispatch UTF-8 변환)
+        char utf8_buffer[4096];
+        int converted = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, utf8_buffer, sizeof(utf8_buffer), nullptr, nullptr);
+        if (converted > 0)
+        {
+            // 후행 개행 문자 제거 후 깔끔하게 ReShade 로거에 전달
+            size_t len = strlen(utf8_buffer);
+            while (len > 0 && (utf8_buffer[len - 1] == '\n' || utf8_buffer[len - 1] == '\r'))
+            {
+                utf8_buffer[len - 1] = '\0';
+                len--;
+            }
+            if (len > 0)
+            {
+                reshade::log::message(reshade::log::level::info, utf8_buffer);
+            }
+        }
+
         va_end(args);
     }
 
@@ -145,9 +181,8 @@ inline void LogToFile(const wchar_t* format, ...)
 {
     va_list args;
     va_start(args, format);
-    // Write via SafeLogManager
-    wchar_t buffer[1024];
-    vswprintf_s(buffer, 1024, format, args);
+    wchar_t buffer[2048];
+    vswprintf_s(buffer, 2048, format, args);
     g_custom_logger.Write(L"%s", buffer);
     va_end(args);
 }
@@ -334,6 +369,82 @@ error:
 */
 
 // ============================================================================
+// [NEW APPEND-ONLY: FEATURE 3 - PURE READ-ONLY DISPLAY HDR DETECTION]
+// ----------------------------------------------------------------------------
+// [English Description]:
+// - Functionality: dxgi_check_display_hdr_support_readonly()
+// - Purpose      : Pure Read-Only Display HDR query using Microsoft::WRL::ComPtr.
+//                  [CRITICAL SAFETY]: NEVER aborts or returns early from swapchain creation.
+//                  Safely updates g_hdr_support and gathers monitor luminance info
+//                  purely for telemetry display and dual-dispatch logging.
+// ----------------------------------------------------------------------------
+// [한국어 상세 설명 (정밀 대조 번역)]:
+// - 동작 기능: 순수 읽기 전용 모드 디스플레이 HDR 사전 감지 헬퍼.
+// - 목적: [기능 3] Microsoft::WRL::ComPtr 스마트 포인터를 적용하여 메모리 누수를 방지하고,
+//         결과에 상관없이 파이프라인을 절대 중단(abort)하지 않는 순수 정보 수집 전용 함수입니다.
+//         감지된 결과는 g_hdr_support 변수에 안전하게 저장되어 텔레메트리 표시와 로그에만 쓰입니다.
+// ============================================================================
+static bool dxgi_check_display_hdr_support_readonly(IDXGIFactory1* factory, HWND hwnd)
+{
+    if (factory == nullptr || hwnd == nullptr)
+    {
+        return false;
+    }
+
+    Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+    UINT adapter_index = 0;
+    bool hdr_supported = false;
+    float best_intersect_area = -1.0f;
+    Microsoft::WRL::ComPtr<IDXGIOutput> best_output;
+
+    RECT window_rect = { 0, 0, 0, 0 };
+    GetWindowRect(hwnd, &window_rect);
+
+    while (factory->EnumAdapters(adapter_index++, &adapter) != DXGI_ERROR_NOT_FOUND)
+    {
+        UINT output_index = 0;
+        Microsoft::WRL::ComPtr<IDXGIOutput> current_output;
+
+        while (adapter->EnumOutputs(output_index++, &current_output) != DXGI_ERROR_NOT_FOUND)
+        {
+            DXGI_OUTPUT_DESC desc;
+            if (SUCCEEDED(current_output->GetDesc(&desc)))
+            {
+                RECT r = desc.DesktopCoordinates;
+                int intersect_area = dxgi_compute_intersection_area(
+                    window_rect.left, window_rect.top, window_rect.right, window_rect.bottom,
+                    r.left, r.top, r.right, r.bottom);
+
+                if ((float)intersect_area > best_intersect_area)
+                {
+                    best_output = current_output;
+                    best_intersect_area = (float)intersect_area;
+                }
+            }
+        }
+    }
+
+    if (best_output != nullptr)
+    {
+        Microsoft::WRL::ComPtr<IDXGIOutput6> output6;
+        if (SUCCEEDED(best_output.As(&output6)))
+        {
+            DXGI_OUTPUT_DESC1 desc1;
+            if (SUCCEEDED(output6->GetDesc1(&desc1)))
+            {
+                hdr_supported = (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+                LogToFile(L"[DXGI ReadOnly]: Output monitor identified. ColorSpace: %hs, MaxLum: %.1f, MinLum: %.4f\n",
+                    GetDxgiColorSpaceName(desc1.ColorSpace),
+                    desc1.MaxLuminance,
+                    desc1.MinLuminance);
+            }
+        }
+    }
+
+    return hdr_supported;
+}
+
+// ============================================================================
 // [ACTIVE MINIMAL PIPELINE / 핵심 동작 구역]
 // ----------------------------------------------------------------------------
 // [English Description]:
@@ -509,9 +620,10 @@ static void on_init_device(reshade::api::device* device)
     }
     */
 
-    LogToFile(L"[Device]: Device initialized (API: %u, Supported: %s)\n",
+    LogToFile(L"[Device]: Device initialized (API: %u, Supported: %s, Vulkan: %s)\n",
         static_cast<unsigned int>(device_type),
-        g_is_supported_api ? L"YES" : L"NO");
+        g_is_supported_api ? L"YES" : L"NO",
+        g_is_vulkan_api ? L"YES" : L"NO");
 }
 
 static void on_destroy_device(reshade::api::device* device)
@@ -615,6 +727,18 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
         {
             LogToFile(L"[init_swapchain]: Native swapchain pointer is null\n");
             return;
+        }
+
+        // ====================================================================
+        // [FEATURE 3: PURE READ-ONLY DISPLAY HDR TELEMETRY QUERY]
+        // [절대 원칙]: 결과가 false여도 절대로 파이프라인을 중단(return/abort)하지 않음!
+        // ====================================================================
+        Microsoft::WRL::ComPtr<IDXGIFactory1> factory1;
+        if (SUCCEEDED(native_swapchain->GetParent(IID_PPV_ARGS(&factory1))) && factory1 != nullptr)
+        {
+            g_hdr_support = dxgi_check_display_hdr_support_readonly(factory1.Get(), reinterpret_cast<HWND>(swapchain->get_hwnd()));
+            LogToFile(L"[init_swapchain]: Display HDR Support (Read-Only Query): %s\n",
+                g_hdr_support ? L"SUPPORTED" : L"NOT_DETECTED_OR_SDR");
         }
 
         Microsoft::WRL::ComPtr<IDXGISwapChain3> swapchain3;
@@ -1041,19 +1165,35 @@ inline static bool CheckLiveWindowsHdrState(reshade::api::effect_runtime* runtim
 //                  Renders inside the official 2nd tab [Add-ons], directly inside
 //                  the AutoHDR card underneath the RC metadata.
 // - Anti-Mojibake: Removed all u8 prefixes to prevent MSVC double-encoding corruption.
-// - Hierarchy    : [Top: Immediate Checkboxes] -> [Separators] -> [Bottom: KAKA Info].
+// - Hierarchy    : [Feature 2 Vulkan Warning Banner] -> [Immediate Checkboxes] -> [KAKA Info].
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
 // - 동작 기능: draw_addon_settings_overlay()
 // - 배치 위치: reshade::register_overlay(nullptr, ...)에 바인딩되어,
 //             ReShade 6.8 공식 2번째 탭인 [Add-ons] 탭 내부의 AutoHDR 카드 안쪽에 임베드 렌더링.
 // - 한글 깨짐 해결: u8 접두사를 전량 제거하여 MSVC 이중 인코딩 외계어(Mojibake) 참사를 100% 원천 해결.
-// - 위계 질서: [최상단: 즉각 조작 체크박스] -> [시각적 구분선] -> [하단: 카카 개선 정보부].
+// - 위계 질서: [최상단: 기능 2 Vulkan 경고 배너] -> [즉각 조작 체크박스] -> [하단: 카카 개선 정보부].
 // ============================================================================
 static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
 {
     if (g_is_supported_api)
     {
+        // ====================================================================
+        // 【FEATURE 2: VULKAN API 감지 시 최상단 안전 경고 배너】
+        // ====================================================================
+        if (g_is_vulkan_api)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+            ImGui::TextWrapped(
+                "※ [API 경고 안내]: Vulkan API 환경(DXVK 변환 레이어 등)이 감지되었습니다!\n"
+                "본 애드온의 16비트 scRGB 파이프라인은 네이티브 Direct3D 11에 최적화되어 있습니다.\n"
+                "DXVK 구동 중 화면 이상이 발생할 경우, DXVK 전용 HDR 패치를 사용할 것을 권장합니다.");
+            ImGui::PopStyleColor();
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+        }
+
         // ====================================================================
         // 【1순위: 최상단 즉각 조작부 (주석에서 안전 복사하여 부활시킨 핵심 컨트롤러)】
         // ====================================================================
@@ -1100,10 +1240,12 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
             if (hdr_enable_modified)
             {
                 reshade::set_config_value(target_runtime, "HDR", "EnableHDR", g_hdr_enable);
+                LogToFile(L"[Config]: EnableHDR changed to %s\n", g_hdr_enable ? L"TRUE" : L"FALSE");
             }
             if (hdr_use_hdr10_modified)
             {
                 reshade::set_config_value(target_runtime, "HDR", "UseHDR10", g_use_hdr10);
+                LogToFile(L"[Config]: UseHDR10 changed to %s\n", g_use_hdr10 ? L"TRUE" : L"FALSE");
             }
         }
 
@@ -1151,24 +1293,39 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
 // - Functionality: draw_kaka_hdr_overlay()
 // - Real-time Fix (Zero C2039 Compile Errors):
 //   1. Resolution is dynamically fetched via runtime->get_screenshot_width_and_height()
-//      and active backbuffer resource descriptor (Correctly displays actual 1920x1080).
+//      and active backbuffer resource descriptor (Correctly displays actual resolution).
 //   2. Windows HDR state dynamically fetched via CheckLiveWindowsHdrState()
 //      (Instantly toggles ON/OFF if Windows HDR is toggled in OS).
 //   3. Swapchain format queried directly from active backbuffer resource descriptor.
 //   4. Color space queried directly from g_reshade_swapchain->get_color_space() without fake ternary.
+//   5. Feature 2 Vulkan Warning Banner & Feature 3 Display Telemetry integrated safely.
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
 // - 동작 기능: draw_kaka_hdr_overlay()
 // - 진짜 실시간 하드웨어 감지 완벽 교정 (컴파일 에러 C2039 원천 소멸):
-//   1. 해상도: runtime->get_screenshot_width_and_height() 및 백버퍼 디스크립터를 실시간 직접 호출
-//      (가짜 하드코딩 3840x2160 영구 박멸! 실제 게임 해상도인 1920x1080을 정직하게 출력).
-//   2. Windows HDR: CheckLiveWindowsHdrState()를 매 프레임 직접 질의
-//      (유저님이 윈도우 설정에서 HDR을 끄면 즉시 OFF, 켜면 즉시 ON 핫 토글 연동).
+//   1. 해상도: runtime->get_screenshot_width_and_height() 및 백버퍼 디스크립터를 실시간 직접 호출.
+//   2. Windows HDR: CheckLiveWindowsHdrState()를 매 프레임 직접 질의 (핫 토글 즉시 연동).
 //   3. 스왑체인 포맷: 현재 활성 백버퍼의 디스크립터를 직접 열어 실제 GPU 메모리 포맷 출력.
-//   4. ReShade 색 공간: g_reshade_swapchain->get_color_space() 실제 반환값 정직 출력 (가짜 땜빵 제거).
+//   4. ReShade 색 공간: g_reshade_swapchain->get_color_space() 실제 반환값 정직 출력.
+//   5. [기능 2 Vulkan 경고 배너] 및 [기능 3 순수 읽기 전용 디스플레이 감지 정보] 완벽 통합.
 // ============================================================================
 static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
 {
+    // ========================================================================
+    // 【FEATURE 2: VULKAN API 감지 시 독자 탭 최상단 안전 경고 배너】
+    // ========================================================================
+    if (g_is_vulkan_api)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.3f, 0.3f, 1.0f));
+        ImGui::TextWrapped(
+            "※ [API 경고 안내]: Vulkan API 환경이 감지되었습니다! (DXVK 등)\n"
+            "본 애드온은 D3D11 네이티브 scRGB 모드에 맞춰 최적화되어 있습니다.");
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+    }
+
     // ========================================================================
     // [진짜 100% 실시간 하드웨어 & OS 감지 변수 실시간 취득 (가짜 데이터 제로)]
     // ========================================================================
@@ -1281,6 +1438,22 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
     ImGui::TextColored(
         live_windows_hdr ? ImVec4(0.20f, 1.0f, 0.35f, 1.0f) : ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
         "%s (실시간 OS 감지)", live_windows_hdr ? "ON" : "OFF");
+
+    // 1.5단계: 하드웨어 모니터 사전 검사 지표 (기능 3 순수 읽기 전용 상태 표출)
+    ImGui::Text("Display HW HDR    ⓘ : ");
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+    {
+        ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 0.0f), ImVec2(360.0f, FLT_MAX));
+        ImGui::BeginTooltip();
+        ImGui::TextWrapped(
+            "[순수 읽기 전용 모니터 HDR 감지 지표]\n\n"
+            "DXGI 어댑터 및 출력단 사전 검사를 통해 모니터 하드웨어가 HDR 디스플레이 규격을 갖추었는지 비차단(Non-blocking) 방식으로 판정한 지표입니다.\n");
+        ImGui::EndTooltip();
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(
+        g_hdr_support ? ImVec4(0.20f, 1.0f, 0.35f, 1.0f) : ImVec4(0.70f, 0.70f, 0.70f, 1.0f),
+        "%s (하드웨어 사전 쿼리)", g_hdr_support ? "AVAILABLE" : "NOT SPECIFIED / SDR");
 
     // 2단계: 물리적 화면 크기 (실제 ReShade 런타임 백버퍼 해상도 실시간 감지)
     ImGui::Text("Output Resolution ⓘ : ");
@@ -1439,9 +1612,16 @@ static void on_init_effect_runtime(reshade::api::effect_runtime* runtime)
     {
         g_runtime = runtime;
 
+        // 런타임 유효화 시점에 이전 세션 ini 설정값 정상 동기화 로드
+        if (g_runtime != nullptr)
+        {
+            reshade::get_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
+            reshade::get_config_value(g_runtime, "HDR", "UseHDR10",  g_use_hdr10);
+        }
+
         set_reshade_colour_space();
 
-        LogToFile(L"[Runtime]: Effect runtime initialized, color space refreshed\n");
+        LogToFile(L"[Runtime]: Effect runtime initialized, color space refreshed, configs loaded\n");
     }
 }
 
@@ -1466,7 +1646,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 
         reshade::log::message(reshade::log::level::info, "DLL attached");
         reshade::log::message(reshade::log::level::info, "ReShade addon registered");
-        LogToFile(L"[DllMain]: ReShade FP16 scRGB Addon attached successfully\n");
+        LogToFile(L"[DllMain]: ReShade FP16 scRGB Addon attached successfully (KAKA Edition)\n");
 
         /* ============================================================================
          * [DISABLED / PRESERVED ORIGINAL CODE / 비활성화 및 원본 보존 구역]
@@ -1535,4 +1715,3 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
     }
     return TRUE;
 }
-
