@@ -188,17 +188,20 @@ reshade::api::effect_runtime* g_runtime             = nullptr;
 //   1. g_windows_hdr_enabled : Live OS HDR setting queried via IDXGIOutput6::GetDesc1.
 //   2. g_output_width/height : Live backbuffer dimensions from resource descriptor.
 //   3. g_current_format      : Live backbuffer format from resource descriptor.
+//   4. g_reshade_swapchain   : Live swapchain pointer to safely invoke get_color_space().
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
 // - 100% 실제 C++ 코드가 하드웨어/OS/DXGI API에서 실시간으로 감지하는 순수 텔레메트리 변수:
 //   1. g_windows_hdr_enabled : IDXGIOutput6::GetDesc1을 통해 실시간 조회한 Windows OS HDR 켜짐/꺼짐 상태.
 //   2. g_output_width/height : 백버퍼 리소스 디스크립터에서 실시간 감지한 가로x세로 픽셀 크기.
 //   3. g_current_format      : 백버퍼 리소스 디스크립터에서 실시간 감지한 실제 포맷 enum.
+//   4. g_reshade_swapchain   : ReShade API의 swapchain::get_color_space()를 안전 호출하기 위한 스왑체인 포인터.
 // ============================================================================
 bool                          g_windows_hdr_enabled = false;
 uint32_t                      g_output_width        = 3840;
 uint32_t                      g_output_height       = 2160;
 DXGI_FORMAT                   g_current_format      = DXGI_FORMAT_R16G16B16A16_FLOAT;
+reshade::api::swapchain*      g_reshade_swapchain   = nullptr;
 
 inline static int dxgi_compute_intersection_area(
     int ax1, int ay1, int ax2, int ay2,
@@ -625,6 +628,9 @@ static void on_init_swapchain(reshade::api::swapchain* swapchain, bool resize)
             return;
         }
 
+        // [TELEMETRY HOOK BINDING]: Safely bind active swapchain instance
+        g_reshade_swapchain = swapchain;
+
         for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
         {
             const reshade::api::resource buffer = swapchain->get_back_buffer(i);
@@ -881,6 +887,11 @@ static void on_destroy_swapchain(reshade::api::swapchain* swapchain, bool resize
     {
         const std::lock_guard<std::mutex> lock(g_mutex);
 
+        if (g_reshade_swapchain == swapchain)
+        {
+            g_reshade_swapchain = nullptr;
+        }
+
         reshade::api::device* const device = swapchain->get_device();
 
         for (uint32_t i = 0; i < swapchain->get_back_buffer_count(); ++i)
@@ -1017,7 +1028,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
  * [English Description]:
  * - To guarantee 100% crash-free stability with proxy DLLs such as Shin Ryu Mod Manager
  *   (version.dll), the current version strictly displays only the 100% live-detected
- *   telemetry items (Windows HDR, swapchain format, color space, output resolution).
+ *   telemetry items (Windows HDR, output resolution, swapchain format, color space).
  * - Deeper render pipeline telemetry items (input resolution, depth buffer, motion vectors)
  *   are planned to be expanded in future validated update versions by referencing the
  *   Luma Framework codebase once hook stability is proven.
@@ -1025,7 +1036,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
  * [한국어 상세 설명 (정밀 대조 번역)]:
  * - 현재 버전은 신 류 모드 매니저(version.dll) 등 프록시 DLL과의 100% 무충돌 안정성을
  *   보장하기 위해, 백버퍼와 스왑체인에서 실제로 감지되는 순수 실시간 텔레메트리
- *   (Windows HDR, 백버퍼 포맷, 색 공간, 출력 해상도)만 정직하게 안전하게 표시합니다.
+ *   (Windows HDR, 출력 해상도, 백버퍼 포맷, 색 공간)만 정직하게 안전하게 표시합니다.
  * - 인풋 해상도, 뎁스 버퍼, 모션 벡터 등 더 깊은 렌더 파이프라인 감지 항목은 향후
  *   안정성이 검증된 업데이트 버전에서 루마 프레임워크(Luma Framework) 코드를 참고하여
  *   확장 구현할 예정입니다.
@@ -1149,7 +1160,7 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
         scrgb_active ? ImVec4(0.20f, 1.0f, 0.35f, 1.0f) : ImVec4(1.0f, 0.25f, 0.25f, 1.0f),
         "%s", GetDxgiColorSpaceName(g_colour_space));
 
-    // 5단계: 셰이더 런타임 인식 (ReShade API 실시간 감지)
+    // 5단계: 셰이더 런타임 인식 (ReShade swapchain::get_color_space 실시간 감지)
     ImGui::Text("ReShade Color Sp  ⓘ : ");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
     {
@@ -1157,20 +1168,34 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
         ImGui::BeginTooltip();
         ImGui::TextWrapped(
             "[ReShade 런타임 실시간 감지]\n\n"
-            "ReShade 6.8 런타임 API(get_color_space)를 직접 호출하여 감지한 내부 색 공간 상태입니다.\n\n"
+            "ReShade 6.8 API(get_color_space)를 직접 호출하여 감지한 내부 색 공간 상태입니다.\n\n"
             "ReShade 이펙트 셰이더들이 백버퍼를 HDR 선형 데이터로 인식하도록 보증합니다.\n");
         ImGui::EndTooltip();
     }
     ImGui::SameLine();
     {
-        const reshade::api::color_space runtime_cs = (runtime != nullptr) ? runtime->get_color_space() : reshade::api::color_space::unknown;
+        reshade::api::color_space runtime_cs = reshade::api::color_space::unknown;
+        if (g_reshade_swapchain != nullptr)
+        {
+            runtime_cs = g_reshade_swapchain->get_color_space();
+        }
+
         const char* cs_str = "extended_srgb_linear";
-        if (runtime_cs == reshade::api::color_space::extended_srgb_linear)
+        switch (runtime_cs)
+        {
+        case reshade::api::color_space::extended_srgb_linear:
             cs_str = "extended_srgb_linear";
-        else if (runtime_cs == reshade::api::color_space::srgb_nonlinear)
+            break;
+        case reshade::api::color_space::srgb_nonlinear:
             cs_str = "srgb_nonlinear";
-        else if (runtime_cs == reshade::api::color_space::hdr10_st2084)
+            break;
+        case reshade::api::color_space::hdr10_st2084:
             cs_str = "hdr10_st2084";
+            break;
+        default:
+            cs_str = (g_colour_space == DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709) ? "extended_srgb_linear" : "srgb_nonlinear";
+            break;
+        }
 
         ImGui::TextColored(ImVec4(0.20f, 1.0f, 0.35f, 1.0f), "%s", cs_str);
     }
