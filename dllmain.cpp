@@ -2,7 +2,7 @@
  * Project: AutoHDR Minimalist scRGB Bridge for Judgment (Dragon Engine Edition)
  * Base   : EndlesslyFlowering/AutoHDR-ReShade (mine branch)
  * Target : Judgment (Steam D3D11) + Shin Ryu Mod Manager (version.dll)
- * Edition: AutoHDR KAKA Edition (2026.10.07 Final Revision)
+ * Edition: AutoHDR KAKA Edition (2026.10.07 Final Revision) - V007 HDR10 UI Lock / Change-Only Logging
  * 
  * [Bilingual Annotation & Preservation Policy / 이중 언어 주석 및 무삭제 보존 원칙]
  * 1. Zero-Deletion Policy: Not a single line of original code is removed.
@@ -1145,7 +1145,27 @@ inline static bool CheckLiveWindowsHdrState(reshade::api::effect_runtime* runtim
                         DXGI_OUTPUT_DESC1 desc1;
                         if (SUCCEEDED(output6->GetDesc1(&desc1)))
                         {
-                            return (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+                            const bool live_hdr_state =
+                                (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+
+                            // ====================================================================
+                            // [V007 CHANGE / V007 변경]: Log only meaningful HDR state transitions.
+                            // [English]: Keep the DXGI query real-time every frame, but write to disk
+                            //           only on the first valid state and subsequent ON/OFF changes.
+                            // [한국어]: DXGI 실시간 감지는 매 프레임 유지하되, 파일 로그는 최초 정상 감지와
+                            //           이후 HDR ON/OFF 상태가 실제로 변할 때만 기록하여 반복 I/O를 줄입니다.
+                            // ====================================================================
+                            static bool s_has_last_hdr_state = false;
+                            static bool s_last_hdr_state = false;
+                            if (!s_has_last_hdr_state || s_last_hdr_state != live_hdr_state)
+                            {
+                                LogToFile(L"[Live HDR State]: Windows HDR changed to %s (real-time DXGI query)\n",
+                                    live_hdr_state ? L"ON" : L"OFF");
+                                s_last_hdr_state = live_hdr_state;
+                                s_has_last_hdr_state = true;
+                            }
+
+                            return live_hdr_state;
                         }
                     }
                 }
@@ -1209,18 +1229,34 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
         ImGui::Separator(); // 시각적 구분선 1
         ImGui::Spacing();
 
-        // 2. HDR10 vs scRGB 모드 셀렉터 (기본값: 체크 해제 / Default OFF)
-        hdr_use_hdr10_modified |= ImGui::Checkbox("Enable HDR10", &g_use_hdr10);
+        // 2. HDR10 selector is intentionally disabled in V007 / V007에서 HDR10 선택기를 의도적으로 비활성화
+        // [English]: The original HDR10 implementation remains in the source, but this UI control
+        //           is locked so the stable FP16 scRGB path cannot be switched away accidentally.
+        // [한국어]: 원본 HDR10 구현 코드는 소스에 그대로 보존하지만, 안정적인 FP16 scRGB 경로가
+        //           실수로 변경되지 않도록 이 UI 선택기만 잠급니다.
+        //
+        // [PRESERVED ORIGINAL UI / 원본 UI 보존]:
+        // hdr_use_hdr10_modified |= ImGui::Checkbox("Enable HDR10", &g_use_hdr10);
+        // // 핵심 권장 가이드 문구
+        // ImGui::TextColored(ImVec4(0.20f, 1.0f, 0.35f, 1.0f),
+        //     "▶ 설정 안내: [체크 해제 권장 (16비트 scRGB 고화질·무충돌 모드 유지)]");
+        // // 정식 규격 및 화질 차이 상세 설명
+        // ImGui::TextWrapped(
+        //     "체크 시 [10비트 HDR10], 해제 시 [16비트 scRGB]로 동작합니다.\n"
+        //     "둘 다 정식 HDR 규격이나, PC 환경에서는 16비트 scRGB가 색 뭉개짐(밴딩) 없이 "
+        //     "연산 정밀도와 다이내믹 레인지 표현력 면에서 훨씬 우수합니다.");
+        // 원본 안내 문구 및 설정 저장 로직도 아래에 주석 형태로 보존합니다.
+        ImGui::BeginDisabled();
+        ImGui::Checkbox("Enable HDR10", &g_use_hdr10);
+        ImGui::EndDisabled();
 
-        // 핵심 권장 가이드 문구
         ImGui::TextColored(ImVec4(0.20f, 1.0f, 0.35f, 1.0f),
-            "▶ 설정 안내: [체크 해제 권장 (16비트 scRGB 고화질·무충돌 모드 유지)]");
+            "▶ HDR10 사용 차단: 현재 버전은 16비트 FP16 scRGB 경로만 사용합니다.");
 
-        // 정식 규격 및 화질 차이 상세 설명
         ImGui::TextWrapped(
-            "체크 시 [10비트 HDR10], 해제 시 [16비트 scRGB]로 동작합니다.\n"
-            "둘 다 정식 HDR 규격이나, PC 환경에서는 16비트 scRGB가 색 뭉개짐(밴딩) 없이 "
-            "연산 정밀도와 다이내믹 레인지 표현력 면에서 훨씬 우수합니다.");
+            "HDR10 기능 자체는 원본 코드에 보존되어 있지만 현재 UI에서는 사용할 수 없습니다.\n"
+            "신류 모드 매니저(version.dll) 및 Dragon Engine 환경의 버퍼 재할당 충돌 가능성을 줄이고, "
+            "검증된 16비트 scRGB 경로를 유지하기 위한 안전 잠금입니다.");
 
         ImGui::Spacing();
 
@@ -1242,6 +1278,9 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
                 reshade::set_config_value(target_runtime, "HDR", "EnableHDR", g_hdr_enable);
                 LogToFile(L"[Config]: EnableHDR changed to %s\n", g_hdr_enable ? L"TRUE" : L"FALSE");
             }
+            // [V007 CHANGE / V007 변경]: HDR10 UI is disabled, so this branch cannot be triggered by the UI.
+            // [English]: Original persistence code is intentionally retained for source compatibility/rollback.
+            // [한국어]: 원본 설정 저장 코드는 소스 호환성과 롤백을 위해 보존하며, 현재 UI에서는 실행되지 않습니다.
             if (hdr_use_hdr10_modified)
             {
                 reshade::set_config_value(target_runtime, "HDR", "UseHDR10", g_use_hdr10);
@@ -1265,6 +1304,24 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
         ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), "Unsupported API!");
     }
 }
+
+/* ============================================================================
+ * [V007 CHANGE SUMMARY / V007 변경 요약]
+ * ----------------------------------------------------------------------------
+ * [English]:
+ * 1. HDR10 UI checkbox is disabled; original HDR10 implementation is preserved.
+ * 2. Legacy UseHDR10 config is forced OFF at runtime to keep FP16 scRGB active.
+ * 3. Real-time Windows HDR detection remains unchanged in frequency/behavior.
+ * 4. Live HDR file logging now records only first valid state and ON/OFF transitions.
+ * 5. No DragonTweak, version.dll, ReShade, ReShade HDR Addon, hook, or DXGI factory redesign.
+ * ----------------------------------------------------------------------------
+ * [한국어]:
+ * 1. HDR10 UI 체크박스만 비활성화하고 원본 HDR10 구현 코드는 보존합니다.
+ * 2. 기존 UseHDR10 설정값은 런타임에서 OFF로 고정하여 FP16 scRGB 경로를 유지합니다.
+ * 3. Windows HDR 실시간 감지 자체는 매 프레임 동작을 그대로 유지합니다.
+ * 4. 실시간 HDR 로그는 최초 정상 감지 및 ON/OFF 변화가 있을 때만 기록합니다.
+ * 5. DragonTweak, version.dll, ReShade, ReShade HDR Addon, 기존 후킹 및 DXGI 구조는 변경하지 않았습니다.
+ * ============================================================================ */
 
 /* ============================================================================
  * [BILINGUAL ROADMAP NOTE / 추후 업데이트 로드맵 및 루마 프레임워크 참조 안내]
@@ -1617,6 +1674,16 @@ static void on_init_effect_runtime(reshade::api::effect_runtime* runtime)
         {
             reshade::get_config_value(g_runtime, "HDR", "EnableHDR", g_hdr_enable);
             reshade::get_config_value(g_runtime, "HDR", "UseHDR10",  g_use_hdr10);
+
+            // ====================================================================
+            // [V007 CHANGE / V007 변경]: HDR10 runtime path is locked OFF.
+            // [English]: Keep the original HDR10 implementation intact for rollback,
+            //           but prevent legacy INI state from selecting the unstable path.
+            // [한국어]: 원본 HDR10 구현은 롤백을 위해 그대로 보존하되, 기존 INI 값 때문에
+            //           불안정한 HDR10 경로가 다시 선택되는 것은 차단합니다.
+            // ====================================================================
+            g_use_hdr10 = false;
+            reshade::set_config_value(g_runtime, "HDR", "UseHDR10", false);
         }
 
         set_reshade_colour_space();
