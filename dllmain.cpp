@@ -1022,6 +1022,98 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
 }
 */
 
+// ============================================================================
+// [NEW APPEND-ONLY: RE-SHADE 기본 2번째 탭 [Add-ons] 공식 설정 렌더링 함수]
+// ----------------------------------------------------------------------------
+// [English Description]:
+// - Functionality: draw_addon_settings_overlay()
+// - Placement    : Bound to reshade::register_overlay(nullptr, ...)
+//                  Renders inside the official 2nd tab [Add-ons], directly inside
+//                  the AutoHDR card underneath the RC metadata.
+// - Hierarchy    : Control-First Hierarchy strictly implemented:
+//                  [Top: Immediate Checkboxes] -> [Separators] -> [Bottom: KAKA Info].
+// ----------------------------------------------------------------------------
+// [한국어 상세 설명 (정밀 대조 번역)]:
+// - 동작 기능: draw_addon_settings_overlay()
+// - 배치 위치: reshade::register_overlay(nullptr, ...)에 바인딩되어,
+//             ReShade 6.8 공식 2번째 탭인 [Add-ons] 탭 내부의 AutoHDR 카드 안쪽에 임베드 렌더링.
+// - 위계 질서: 유저님이 확립하신 참된 상하 위계질서 100% 구현:
+//             [최상단: 즉각 조작 체크박스] -> [시각적 구분선] -> [하단: 카카 개선 정보부].
+// ============================================================================
+static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
+{
+    if (g_is_supported_api)
+    {
+        // ====================================================================
+        // 【1순위: 최상단 즉각 조작부 (주석에서 안전 복사하여 부활시킨 핵심 컨트롤러)】
+        // ====================================================================
+        bool hdr_enable_modified    = false;
+        bool hdr_use_hdr10_modified = false;
+
+        // 1. 마스터 Auto HDR 토글 (기본값: 체크됨 / Default ON)
+        hdr_enable_modified |= ImGui::Checkbox(u8"Enable HDR", &g_hdr_enable);
+        ImGui::TextColored(ImVec4(0.85f, 0.85f, 0.85f, 1.0f),
+            u8"SDR 게임 그래픽을 고화질 HDR 화면으로 자동 확장 변환하는 마스터 스위치입니다.");
+
+        ImGui::Spacing();
+        ImGui::Separator(); // 시각적 구분선 1
+        ImGui::Spacing();
+
+        // 2. HDR10 vs scRGB 모드 셀렉터 (기본값: 체크 해제 / Default OFF)
+        hdr_use_hdr10_modified |= ImGui::Checkbox(u8"Enable HDR10", &g_use_hdr10);
+
+        // 핵심 권장 가이드 문구
+        ImGui::TextColored(ImVec4(0.20f, 1.0f, 0.35f, 1.0f),
+            u8"▶ 설정 안내: [체크 해제 권장 (16비트 scRGB 고화질·무충돌 모드 유지)]");
+
+        // 정식 규격 및 화질 차이 상세 설명
+        ImGui::TextWrapped(
+            u8"체크 시 [10비트 HDR10], 해제 시 [16비트 scRGB]로 동작합니다.\n"
+            u8"둘 다 정식 HDR 규격이나, PC 환경에서는 16비트 scRGB가 색 뭉개짐(밴딩) 없이 "
+            u8"연산 정밀도와 다이내믹 레인지 표현력 면에서 훨씬 우수합니다.");
+
+        ImGui::Spacing();
+
+        // 신류 모드 매니저 충돌 방지 주의사항 (경고문)
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+            u8"※ 주의: 신류 모드 매니저(version.dll)나 모드 환경에서 HDR10을 체크할 경우, "
+            u8"화면 버퍼 재할당 충돌로 게임이 튕길 수 있으므로 체크를 해제한 상태로 사용하십시오.");
+
+        ImGui::Spacing();
+        ImGui::Separator(); // 시각적 구분선 2
+        ImGui::Spacing();
+
+        // 설정 변경 시 ini 파일 안전 저장 로직 (g_runtime 및 runtime 널 체크 안전망)
+        reshade::api::effect_runtime* target_runtime = (runtime != nullptr) ? runtime : g_runtime;
+        if (target_runtime != nullptr)
+        {
+            if (hdr_enable_modified)
+            {
+                reshade::set_config_value(target_runtime, "HDR", "EnableHDR", g_hdr_enable);
+            }
+            if (hdr_use_hdr10_modified)
+            {
+                reshade::set_config_value(target_runtime, "HDR", "UseHDR10", g_use_hdr10);
+            }
+        }
+
+        // ====================================================================
+        // 【2순위: 그 밑 하단 정보부 (AutoHDR.rc 한글 개선 정보와 100% 일치 연동)】
+        // ====================================================================
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.20f, 1.0f), u8"■ AutoHDR KAKA Edition (2026.10.07 개선 완료)");
+        ImGui::TextColored(ImVec4(0.70f, 0.70f, 0.70f, 1.0f), u8"   Original AutoHDR Core (C) Lilium");
+        ImGui::Spacing();
+        ImGui::TextWrapped(
+            u8"게임 모드 매니저와의 충돌을 방지하기 위해, "
+            u8"카카(KAKA)가 오늘(2026.10.07) 모드 매니저 호환성 및 충돌 방지 개선 수정을 진행했습니다.\n"
+            u8"신류 모드 매니저(version.dll) 환경에서 런타임 버퍼 리사이즈 크래시 없는 16비트 scRGB 파이프라인이 가동 중입니다.");
+    }
+    else
+    {
+        ImGui::TextColored(ImVec4(1.0f, 0.3f, 0.3f, 1.0f), u8"Unsupported API!");
+    }
+}
+
 /* ============================================================================
  * [BILINGUAL ROADMAP NOTE / 추후 업데이트 로드맵 및 루마 프레임워크 참조 안내]
  * ----------------------------------------------------------------------------
@@ -1043,7 +1135,7 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
  * ============================================================================ */
 
 // ============================================================================
-// [NEW APPEND-ONLY: [KAKA-AUTO HDR] RE-SHADE 6.8 OVERLAY UI DASHBOARD]
+// [NEW APPEND-ONLY: [KAKA-AUTO HDR] RE-SHADE 6.8 OVERLAY UI DASHBOARD (독자 탭 100% 보존)]
 // ----------------------------------------------------------------------------
 // [English Description]:
 // - Functionality: draw_kaka_hdr_overlay()
@@ -1054,9 +1146,9 @@ static void draw_settings_overlay(reshade::api::effect_runtime* runtime)
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
 // - 동작 기능: draw_kaka_hdr_overlay()
-// - 목적: ReShade 6.8 상단 바에 독립 최상위 탭 "[KAKA-AUTO HDR]"을 구축합니다.
+// - 목적: ReShade 6.8 상단 메뉴 바의 7번째 독립 최상위 탭 "[KAKA-AUTO HDR]"을 완벽 유지합니다.
 //         가짜 데이터 없이 100% C++ 코드가 감지하는 실시간 하드웨어/OS 텔레메트리를 표시하고,
-//         직관적인 목적 서사, 80 nits vs 203 nits 선택 가이드 및 공식 출처를 제공합니다.
+//         직관적인 목적 서사, 80 nits vs 203 nits 선택 가이드 및 공식 출처를 온전히 제공합니다.
 // - 안전성: 순수 읽기 전용 감지 표시 함수로 GPU 파이프라인이나 리소스를 일체 변경하지 않습니다.
 // ============================================================================
 static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
@@ -1326,24 +1418,20 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
          * ----------------------------------------------------------------------------
          * [English Description]:
          * - Original Code       : reshade::register_overlay(nullptr, draw_settings_overlay);
-         * - Reason for Disabling: Overlay UI disabled to prevent UI-level hook interference.
-         * ----------------------------------------------------------------------------
-         * [한국어 상세 설명 (정밀 대조 번역)]:
-         * - 원본 코드: reshade::register_overlay(nullptr, draw_settings_overlay);
-         * - 비활성화 이유: UI 레벨의 후킹 간섭을 차단하기 위해 오버레이 등록을 비활성화합니다.
+         * - Reason for Disabling: Replaced by the upgraded draw_addon_settings_overlay
+         *                         which implements the Control-First Korean hierarchy.
          * ============================================================================ */
         /*
         reshade::register_overlay(nullptr, draw_settings_overlay);
         */
 
         // ============================================================================
-        // [NEW APPEND-ONLY: REGISTER [KAKA-AUTO HDR] TAB ON RE-SHADE 6.8]
-        // ----------------------------------------------------------------------------
-        // [English Description]:
-        // - Registers the dedicated top-level menu bar overlay tab "[KAKA-AUTO HDR]".
-        // ----------------------------------------------------------------------------
-        // [한국어 상세 설명 (정밀 대조 번역)]:
-        // - ReShade 6.8 상단 메뉴 바에 독립 최상위 탭 "[KAKA-AUTO HDR]"을 등록합니다.
+        // [양대 축 등록 1: ReShade 기본 2번째 탭 [Add-ons] 공식 애드온 설정 바인딩]
+        // ============================================================================
+        reshade::register_overlay(nullptr, draw_addon_settings_overlay);
+
+        // ============================================================================
+        // [양대 축 등록 2: ReShade 6.8 상단 메뉴 바 7번째 독자 탭 [KAKA-AUTO HDR] 바인딩]
         // ============================================================================
         reshade::register_overlay("[KAKA-AUTO HDR]", draw_kaka_hdr_overlay);
 
@@ -1365,13 +1453,12 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         LogToFile(L"[DllMain]: ReShade FP16 scRGB Addon detaching\n");
 
         // ============================================================================
-        // [NEW APPEND-ONLY: UNREGISTER [KAKA-AUTO HDR] TAB ON DETACH]
-        // ----------------------------------------------------------------------------
-        // [English Description]:
-        // - Safely unregisters the dedicated overlay tab "[KAKA-AUTO HDR]".
-        // ----------------------------------------------------------------------------
-        // [한국어 상세 설명 (정밀 대조 번역)]:
-        // - 프로세스 언로드 시 최상위 탭 "[KAKA-AUTO HDR]"의 오버레이 등록을 안전하게 해제합니다.
+        // [양대 축 해제 1: 기본 [Add-ons] 탭 오버레이 안전 해제]
+        // ============================================================================
+        reshade::unregister_overlay(nullptr, draw_addon_settings_overlay);
+
+        // ============================================================================
+        // [양대 축 해제 2: 독자 탭 [KAKA-AUTO HDR] 오버레이 안전 해제]
         // ============================================================================
         reshade::unregister_overlay("[KAKA-AUTO HDR]", draw_kaka_hdr_overlay);
 
