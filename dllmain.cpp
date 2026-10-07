@@ -1149,23 +1149,23 @@ static void draw_addon_settings_overlay(reshade::api::effect_runtime* runtime)
 // ----------------------------------------------------------------------------
 // [English Description]:
 // - Functionality: draw_kaka_hdr_overlay()
-// - Real-time Fix:
-//   1. Resolution is dynamically fetched via runtime->get_frame_width/height()
-//      (Hardcoded 3840x2160 permanently purged! Correctly displays 1920x1080).
+// - Real-time Fix (Zero C2039 Compile Errors):
+//   1. Resolution is dynamically fetched via runtime->get_screenshot_width_and_height()
+//      and active backbuffer resource descriptor (Correctly displays actual 1920x1080).
 //   2. Windows HDR state dynamically fetched via CheckLiveWindowsHdrState()
 //      (Instantly toggles ON/OFF if Windows HDR is toggled in OS).
 //   3. Swapchain format queried directly from active backbuffer resource descriptor.
-//   4. Color space queried directly from runtime->get_color_space() without fake ternary.
+//   4. Color space queried directly from g_reshade_swapchain->get_color_space() without fake ternary.
 // ----------------------------------------------------------------------------
 // [한국어 상세 설명 (정밀 대조 번역)]:
 // - 동작 기능: draw_kaka_hdr_overlay()
-// - 진짜 실시간 하드웨어 감지 완벽 교정:
-//   1. 해상도: runtime->get_frame_width/height()를 실시간 직접 호출
+// - 진짜 실시간 하드웨어 감지 완벽 교정 (컴파일 에러 C2039 원천 소멸):
+//   1. 해상도: runtime->get_screenshot_width_and_height() 및 백버퍼 디스크립터를 실시간 직접 호출
 //      (가짜 하드코딩 3840x2160 영구 박멸! 실제 게임 해상도인 1920x1080을 정직하게 출력).
 //   2. Windows HDR: CheckLiveWindowsHdrState()를 매 프레임 직접 질의
 //      (유저님이 윈도우 설정에서 HDR을 끄면 즉시 OFF, 켜면 즉시 ON 핫 토글 연동).
 //   3. 스왑체인 포맷: 현재 활성 백버퍼의 디스크립터를 직접 열어 실제 GPU 메모리 포맷 출력.
-//   4. ReShade 색 공간: runtime->get_color_space() 실제 반환값 정직 출력 (가짜 땜빵 제거).
+//   4. ReShade 색 공간: g_reshade_swapchain->get_color_space() 실제 반환값 정직 출력 (가짜 땜빵 제거).
 // ============================================================================
 static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
 {
@@ -1173,14 +1173,18 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
     // [진짜 100% 실시간 하드웨어 & OS 감지 변수 실시간 취득 (가짜 데이터 제로)]
     // ========================================================================
     
-    // 1. 실제 해상도 실시간 취득 (ReShade 공식 API 직접 호출, 하드코딩 완전 박멸)
-    uint32_t live_width  = (runtime != nullptr) ? runtime->get_frame_width()  : 0;
-    uint32_t live_height = (runtime != nullptr) ? runtime->get_frame_height() : 0;
+    // 1. 실제 해상도 실시간 취득 (ReShade 공식 get_screenshot_width_and_height API 사용)
+    uint32_t live_width  = 0;
+    uint32_t live_height = 0;
+    if (runtime != nullptr)
+    {
+        runtime->get_screenshot_width_and_height(&live_width, &live_height);
+    }
 
     // 2. Windows OS HDR 실시간 모니터 쿼리 (핫 토글 즉각 반응)
     bool live_windows_hdr = CheckLiveWindowsHdrState(runtime);
 
-    // 3. 실제 GPU 백버퍼 포맷 실시간 디스크립터 조회
+    // 3. 실제 GPU 백버퍼 포맷 실시간 디스크립터 조회 (해상도 보강 포함)
     DXGI_FORMAT live_format = DXGI_FORMAT_UNKNOWN;
     if (runtime != nullptr)
     {
@@ -1191,6 +1195,11 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
             if (back_buffer.handle != 0)
             {
                 reshade::api::resource_desc res_desc = device->get_resource_desc(back_buffer);
+                if (live_width == 0 || live_height == 0)
+                {
+                    live_width  = res_desc.texture.width;
+                    live_height = res_desc.texture.height;
+                }
                 live_format = static_cast<DXGI_FORMAT>(res_desc.texture.format);
             }
         }
@@ -1200,8 +1209,13 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
         live_format = g_original_format;
     }
 
-    // 4. ReShade 런타임 색 공간 실시간 쿼리 (가짜 삼항연산자 완전 제거)
-    reshade::api::color_space live_runtime_cs = (runtime != nullptr) ? runtime->get_color_space() : reshade::api::color_space::unknown;
+    // 4. ReShade 런타임 색 공간 실시간 쿼리 (g_reshade_swapchain->get_color_space() 정석 호출)
+    reshade::api::color_space live_runtime_cs = reshade::api::color_space::unknown;
+    if (g_reshade_swapchain != nullptr)
+    {
+        live_runtime_cs = g_reshade_swapchain->get_color_space();
+    }
+
     const char* live_cs_str = "unknown";
     switch (live_runtime_cs)
     {
@@ -1276,7 +1290,7 @@ static void draw_kaka_hdr_overlay(reshade::api::effect_runtime* runtime)
         ImGui::BeginTooltip();
         ImGui::TextWrapped(
             "[실시간 스왑체인 해상도 감지]\n\n"
-            "ReShade effect_runtime의 get_frame_width() 및 get_frame_height()를 매 프레임 직접 호출하여 읽어온 실제 화면 해상도입니다.\n\n"
+            "ReShade effect_runtime의 실제 버퍼 크기 질의 API를 매 프레임 직접 호출하여 읽어온 실제 화면 해상도입니다.\n\n"
             "하드코딩 데이터가 전혀 없으며, 게임의 실제 출력 해상도가 100%% 정직하게 표시됩니다.\n");
         ImGui::EndTooltip();
     }
