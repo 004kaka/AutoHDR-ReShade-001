@@ -146,7 +146,7 @@ public:
 
         if (log_file != nullptr)
         {
-            vfwprintf(log_file, L"%s", buffer);
+           fputws(buffer, log_file);
             fflush(log_file);
         }
 
